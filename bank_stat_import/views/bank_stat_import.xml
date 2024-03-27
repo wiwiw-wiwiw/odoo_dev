@@ -1,0 +1,63 @@
+<odoo>
+
+    <record id="bank_stat_import_tree_view" model="ir.ui.view">
+      <field name="name">bank.stat.import.tree.view</field>
+      <field name="model">bank.stat.import</field>
+      <field name="arch" type="xml">
+        <tree js_class="account_tree" >
+       
+    
+          <field name="name" />
+          <field name="date" />
+          <field name="amount" />
+          
+        </tree>
+
+      
+      </field>
+    </record>
+    <record id="bank_stat_import_form_view" model="ir.ui.view">
+      <field name="name">bank.stat.import.form.view</field>
+      <field name="model">bank.stat.import</field>
+      <field name="arch" type="xml">
+        <form>
+          <field name="name" />
+          <field name="date" />
+          <field name="amount" />
+        </form>
+
+      
+      </field>
+    </record>
+
+<record id="bank_stat_import_action" model="ir.actions.act_window">
+  <field name="name">Bank Stat Import</field>
+  <field name="res_model">bank.stat.import</field>
+  <field name="view_mode">tree,form</field>
+
+  
+  
+</record>
+
+<menuitem id="bank_stat_import_menu_root" 
+  
+  name="Bank Stat Import root"
+/>
+
+<menuitem id="bank_stat_import_menu_root_sub" 
+  
+  name="Bank Stat Import sub_root"
+  parent="bank_stat_import_menu_root"
+/>
+
+<menuitem id="bank_stat_import_menu" 
+  action="bank_stat_import_action"
+  name="Imports"
+  parent="bank_stat_import_menu_root_sub"
+/>
+
+  
+</odoo>
+
+
+
