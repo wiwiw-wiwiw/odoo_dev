@@ -7,7 +7,7 @@
     'website': "https://www.yourcompany.com",
     'category': 'Uncategorized',
     'version': '17.0.0.1',
-    'depends': ['base', 'account', 'common_tools', ],
+    'depends': ['base', 'account', 'crm', 'common_tools', ],
     # "assets": {
     #     "web.assets_backend": [
     #         "common_tools/static/src/**/*",
