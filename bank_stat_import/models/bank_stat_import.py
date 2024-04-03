@@ -1,8 +1,7 @@
-import xml.etree.ElementTree as ET
-from odoo import models
 from odoo import models, fields, api
-import base64
 from lxml import etree
+import xml.etree.ElementTree as ET
+import base64
 import logging
 
 # Создание логгера для текущего модуля
@@ -32,110 +31,37 @@ class BankStatImport(models.Model):
     date = fields.Date(string='Дата')
     amount = fields.Float(string='Сумма')
 
-
 class AccountPayment(models.Model):
     _inherit = 'account.payment'
 
     def create_document_from_attachment(self, attachment_ids):
-        try:
-            for attachment_id in attachment_ids:
-                attachment = self.env['ir.attachment'].browse(attachment_id)
-                try:
-                    # Декодирование данных из формата base64
-                    decoded_data = base64.b64decode(attachment.datas)
+        print("**create_document_from_attachment**")
+        print("attachment_ids:", attachment_ids)
 
-                    # Попытка декодировать данные с использованием UTF-8
-                    try:
-                        string_content = decoded_data.decode("utf-8")
-                        # Вывод результатов парсинга в консоль
-                        print("Parsed content of attachment:", string_content)
-                        
-                    except UnicodeDecodeError:
-                        # Если возникает ошибка с кодировкой
-                        print(f"error decoding file - {attachment.name} with UTF-8 encoding")
+        attachments = self.env['ir.attachment'].browse(attachment_ids)
+        for attachment in attachments:
+            print("**attachment**")
+            print("name:", attachment.name)
 
-                        # Пропустить обработку данного файла
-                        continue
+            content_data = base64.b64decode(attachment.datas)
+            xml_etree = etree.fromstring(content_data)
+            
+            extractList_elems = xml_etree.find("{*}extractList")
+            # print(extractList_elems)
 
-                    
+            for turn in extractList_elems.findall("{*}turns"):
+                crAmount = turn.find("{*}crAmount").text
+                naznText = turn.find("{*}naznText").text
+                # print("crAmount", crAmount, "naznText", naznText)
 
-                    try:
-                           
-
-                        # Парсинг XML-данных с использованием xml.etree.ElementTree
-                        xml_tree = ET.fromstring(string_content)
-                        print(xml_tree)
-
-                        # Находим все элементы TotalDeb
-                        # total_deb_elements = xml_tree.findall(".//entry[key = 'TotalDeb']/value")
-
-                        total_deb_elements = xml_tree.findall(
-                            ".//descBalance/extractList/additionalParams/entry[key='TotalDeb']/value")
+                payment_data = {
+                    'amount': crAmount, 
+                    'ref': naznText
+                    }
+                new_payment = self.env['account.payment'].create(payment_data)
+                print("PAYMENT DATA", payment_data)
+            
+               
 
 
-
-
-                        # Проверяем, нашлись ли элементы
-                        if total_deb_elements:
-                            print("Элементы TotalDeb найдены в дереве.")
-                        else:
-                            print("Элементы TotalDeb не найдены в дереве.")    
-                        # Обрабатываем каждый найденный элемент TotalDeb
-
-
-
-                        
-                        for total_deb_element in total_deb_elements:
-                            # Получаем значение элемента Value внутри TotalDeb
-                            amount = float(
-                                total_deb_element.find('value').text)
-
-                            # Создаем запись в account.payment с найденной суммой
-                            payment_data = {
-                                'amount': amount,
-                                # словарь  для создания записи
-                            }
-                            new_payment = self.create(payment_data)
-                            # Выводим информацию о созданной записи в консоль
-                            print("Created payment with amount:", amount)
-                    except Exception as e:
-                        _logger.exception("An error occurred: %s", e)
-
-                    # TODO: Обработка данных
-                except Exception as e:
-                    _logger.exception("An error occurred: %s", e)
-                    # print(f"Error processing file {attachment.name}: {e}")
-        except Exception as e:
-            _logger.exception("An error occurred: %s", e)
-            # print(f"Error processing attachments: {e}")
-        # return self.env.ref('base.action_res_users').read()[0] # заглушка от ошибки в интерфейсе по поводу того что нет действия
-        return
-
-        # Создание нескольких записей сразу
-        # new_payments = self.env['account.payment'].create(payment_data_list)
-
-        # пример :::
-
-    # def create_document_from_attachment(self, attachment_ids):
-    #     print("**create_document_from_attachment**")
-    #     print("attachment_ids:", attachment_ids)
-
-    #     attachments = self.env['ir.attachment'].browse(attachment_ids)
-    #     for attachment in attachments:
-    #         print("**attachment**")
-    #         print("name:", attachment.name)
-
-    #         # print("datas:", attachment.datas)
-
-    #         file_name = attachment.name
-    #         base64_data = attachment.datas
-    #         bytes_content = base64.b64decode(base64_data)
-
-    #         # Декодируем байты напрямую в строку (без лишнего кодирования)
-    #         string_content = bytes_content.decode("utf-8")
-    #         print("string_content", string_content)
-    #         # Парсим XML-строку с помощью lxml.etree.fromstring
-    #         xml_tree = etree.fromstring(string_content)
-    #         print(xml_tree)
-
-    #     return {}
+        return {}
