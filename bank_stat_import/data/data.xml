@@ -89,12 +89,6 @@
         <field name="bic">PJCBBY2X</field> 
     </record>
     
-    <record id="res_bank_" model="res.bank"> 
-        <field name="name"></field> 
-        <field name="city">Минск</field> 
-        <field name="bic"></field> 
-    </record>
-    
     <record id="res_bank_POISBY2X" model="res.bank"> 
         <field name="name">ОАО "Паритетбанк"</field> 
         <field name="city">Минск</field> 
