@@ -17,7 +17,7 @@
     'data': [
         'views/bank_stat_import.xml',
         'security/ir.model.access.csv',
-        'data/data.xml',
+       # 'data/data.xml',
     ],
 
     'demo': [

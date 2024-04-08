@@ -29,6 +29,44 @@ class AccountPayment(models.Model):
         else:
             return partner.id
 
+    # проверяем существование счета партнера в res.partner.bank, если есть возвращаем id, если нет - проверяем
+    # наличие банка в в res.bank, если нет - создаем банк, а на его основе - запись о счете в res.partner.bank
+
+    @api.model
+    def get_partner_bank_id(self, corrAccount, corrBankCode, corrBankName, partner_id):
+        # Поиск счета партнера
+        partner_bank = self.env['res.partner.bank'].search([
+            ('acc_number', '=', corrAccount),
+        #    ('bank_bic', '=', corrBankCode)
+        ], limit=1)
+
+        if partner_bank:
+            # Если счет партнера существует, возвращаем его идентификатор
+            return partner_bank.id
+        else:
+            # Проверяем, существует ли банк партнера
+            partner_bank_bank = self.env['res.bank'].search([
+                ('bic', '=', corrBankCode)
+            ], limit=1)
+
+            if not partner_bank_bank:
+                # Если банк партнера не существует, создаем новую запись в модели res.bank
+                partner_bank_bank = self.env['res.bank'].create({
+                    'name': corrBankName,
+                    'bic': corrBankCode
+                })
+
+            # Создаем запись счета партнера в модели res.partner.bank
+            new_partner_bank = self.env['res.partner.bank'].create({
+                'acc_number': corrAccount,
+                'bank_id': partner_bank_bank.id,
+                # 'bank_name': corrBankName,
+                # 'bank_bic': corrBankCode,
+                'partner_id': partner_id
+            })
+
+            return new_partner_bank.id
+
     def create_document_from_attachment(self, attachment_ids):
         # print("**create_document_from_attachment**")
         # print("attachment_ids:", attachment_ids)
@@ -60,9 +98,13 @@ class AccountPayment(models.Model):
                 corrName = turn.find("{*}corrName").text
                 corrAccount = turn.find("{*}corrAccount").text
                 corrBankCode = turn.find("{*}corrBankCode").text
-                # corrBankName = turn.find("{*}corrBankName").text
+                corrBankName = turn.find("{*}corrBankName").text
+                #print("corrBankName:::::::::::::", corrBankName)
 
+                # 
                 partner_id = self.get_partner_id(corrName)
+                partner_bank_id = self.get_partner_bank_id(
+                    corrAccount, corrBankCode, corrBankName, partner_id)
 
                 print("partner_id ::::: ", partner_id)
 
@@ -90,6 +132,7 @@ class AccountPayment(models.Model):
                     'ref': naznText,  # комментарий - назначение платежа
                     'date': date_only,  # дата
                     'partner_id': partner_id,
+                    'partner_bank_id': partner_bank_id,
 
 
 
