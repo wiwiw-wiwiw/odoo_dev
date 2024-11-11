@@ -1,0 +1,110 @@
+<odoo> 
+    <record id="res_bank_ABIGBY25" model="res.bank"> 
+        <field name="name">ОАО "НКФО "Белинкасгрупп"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">ABIGBY25</field> 
+    </record>
+
+    <record id="res_bank_ALFABY2X" model="res.bank"> 
+        <field name="name">ЗАО "Альфа-Банк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">ALFABY2X</field> 
+    </record>
+
+    <record id="res_bank_AKBBBY2X" model="res.bank"> 
+        <field name="name">ОАО "АСБ Беларусбанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">AKBBBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BAPBBY2X" model="res.bank"> 
+        <field name="name">ОАО "Белагропромбанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BAPBBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BBTKBY2X" model="res.bank"> 
+        <field name="name">ЗАО "ТК Банк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BBTKBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BCSXBY22" model="res.bank"> 
+        <field name="name">ОАО "БЕЛОРУССКАЯ ВАЛЮТНО-ФОНДОВАЯ БИРЖА"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BCSXBY22</field> 
+    </record>    
+    
+    <record id="res_bank_BELBBY2X" model="res.bank"> 
+        <field name="name">ОАО "Банк БелВЭБ"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BELBBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BLBBBY2X" model="res.bank"> 
+        <field name="name">ОАО "Белинвестбанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BLBBBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BLNBBY2X" model="res.bank"> 
+        <field name="name">ОАО "БНБ-Банк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BLNBBY2X</field> 
+    </record>    
+    
+    <record id="res_bank_BPSBBY2X" model="res.bank"> 
+        <field name="name">ОАО "Сбер Банк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BPSBBY2X</field> 
+    </record>
+    
+    <record id="res_bank_BRRBBY2X" model="res.bank"> 
+        <field name="name">ОАО "БАНК РАЗВИТИЯ РЕСПУБЛИКИ БЕЛАРУСЬ"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">BRRBBY2X</field> 
+    </record>
+    
+    <record id="res_bank_MTBKBY22" model="res.bank"> 
+        <field name="name">ЗАО "МТБанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">MTBKBY22</field> 
+    </record>
+    
+    <record id="res_bank_NBRBBY2X" model="res.bank"> 
+        <field name="name">НАЦИОНАЛЬНЫЙ БАНК РЕСПУБЛИКИ БЕЛАРУСЬ</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">NBRBBY2X</field> 
+    </record>
+    
+    <record id="res_bank_OLMPBY2X" model="res.bank"> 
+        <field name="name">ОАО "Белгазпромбанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">OLMPBY2X</field> 
+    </record>
+    
+    <record id="res_bank_PJCBBY2X" model="res.bank"> 
+        <field name="name">"Приорбанк" ОАО</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">PJCBBY2X</field> 
+    </record>
+    
+    <record id="res_bank_POISBY2X" model="res.bank"> 
+        <field name="name">ОАО "Паритетбанк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">POISBY2X</field> 
+    </record>
+    
+    <record id="res_bank_SLANBY22" model="res.bank"> 
+        <field name="name">ЗАО Банк ВТБ (Беларусь)</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">SLANBY22</field> 
+    </record>
+    
+    <record id="res_bank_UNBSBY2X" model="res.bank"> 
+        <field name="name">ЗАО "БСБ Банк"</field> 
+        <field name="city">Минск</field> 
+        <field name="bic">UNBSBY2X</field> 
+    </record>
+
+</odoo> 
