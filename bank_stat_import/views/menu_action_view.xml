@@ -1,0 +1,15 @@
+<!-- bank_statement_import/views/menu_action_view.xml -->
+
+<odoo>
+    <record id="action_bank_statement_import_wizard" model="ir.actions.act_window">
+        <field name="name">Импорт банковской выписки</field>
+        <field name="res_model">bank.statement.import.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_bank_statement_import" 
+              name="Импорт банковской выписки" 
+              parent="account.menu_finance" 
+              action="action_bank_statement_import_wizard"/>
+</odoo>
