@@ -7,8 +7,8 @@
     'author': "My Company",
     'website': "https://www.yourcompany.com",
     'category': 'Uncategorized',
-    'version': '17.0.0.1',
-    'depends': ['base', 'account', 'crm', 'common_tools', ],
+    'version': '17.0.0.3',
+    'depends': ['base', 'account', 'crm', ],
     # "assets": {
     #     "web.assets_backend": [
     #         "common_tools/static/src/**/*",
