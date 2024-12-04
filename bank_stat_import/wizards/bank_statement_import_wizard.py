@@ -1,5 +1,6 @@
 # bank_statement_import/models/bank_statement_import_wizard.py
 
+
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
 import base64
