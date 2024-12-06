@@ -28,7 +28,7 @@ class AccountPayment(models.Model):
         # Преобразование входных данных в строку
         hash_string = f"{date}|{amount}|{reference}"
         
-        # Использование SHA-256 для более надежного хэширования
+        # Использование SHA-256 
         return hashlib.sha256(hash_string.encode()).hexdigest()
 
     @api.model
