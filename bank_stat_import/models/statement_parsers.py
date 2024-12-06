@@ -160,5 +160,5 @@ class BankStatementParser_AKBBBY2X(BaseStatementParser):
             'currency': transaction['currency'],
             
         }
-        print("recored_data", record_data)
+#        print("recored_data", record_data)
         return record_data
