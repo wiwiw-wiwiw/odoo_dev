@@ -158,8 +158,10 @@ class BankStatImport(models.TransientModel):
 
     def _create_payments_from_batch(self, batch):
         """
-        Создание платежей из пакета транзакций.
+        Создание платежей из пакета транзакций (оптимизировано для пакетной загрузки).
         """
+        payment_data = []
+
         for transaction in batch['transactions']:
             partner_id = self._get_or_create_partner(transaction['partner_name'])
             partner_bank_id = self._get_or_create_partner_bank(
@@ -169,7 +171,8 @@ class BankStatImport(models.TransientModel):
                 partner_id
             )
 
-            payment_data = {
+            # Собираем данные для записи
+            payment_data.append({
                 'amount': transaction['amount'],
                 'payment_type': transaction['payment_type'],
                 'ref': transaction['reference'],
@@ -177,9 +180,12 @@ class BankStatImport(models.TransientModel):
                 'partner_id': partner_id,
                 'partner_bank_id': partner_bank_id,
                 'transaction_hash': transaction['transaction_hash'],
-            }
-            
+            })
+
+        # Создание всех записей одной операцией
+        if payment_data:
             self.env['account.payment'].create(payment_data)
+
 #            _logger.info(f"Создан платёж с хэшем: {transaction['transaction_hash']}")
 
     # def _process_transactions(self, transactions, parser):
