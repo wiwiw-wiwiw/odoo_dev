@@ -188,34 +188,6 @@ class BankStatImport(models.TransientModel):
 
 #            _logger.info(f"Создан платёж с хэшем: {transaction['transaction_hash']}")
 
-    # def _process_transactions(self, transactions, parser):
-    #     """
-    #     Обрабатывает транзакции, создаёт партнёров, счета и платежи.
-    #     """
-    #     for transaction in transactions:
-    #         processed = parser.process_transaction(transaction)
-    #         _logger.debug("Обработка транзакции: %s", processed)
-
-    #         partner_id = self._get_or_create_partner(processed['partner_name'])
-    #         partner_bank_id = self._get_or_create_partner_bank(
-    #             processed['partner_account'],
-    #             processed['partner_bank_code'],
-    #             processed['partner_bank_name'],
-    #             partner_id
-    #         )
-
-    #         # Создание платежа
-    #         payment_data = {
-    #             'amount': processed['amount'],
-    #             'payment_type': processed['payment_type'],
-    #             'ref': processed['reference'],
-    #             'date': processed['date'],
-    #             'partner_id': partner_id,
-    #             'partner_bank_id': partner_bank_id,
-    #         }
-    #         self.env['account.payment'].create(payment_data)
-    #         _logger.info("Создан платёж: %s", payment_data)
-
     @api.model
     def _get_or_create_partner(self, partner_name):
         """
