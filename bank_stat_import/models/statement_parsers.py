@@ -1,167 +1,100 @@
 # bank_statement_import/models/statement_parsers.py
-
 # -*- coding: utf-8 -*-
 from lxml import etree
 from datetime import datetime
 import logging
+import hashlib
 
 _logger = logging.getLogger(__name__)
 
 class BaseStatementParser:
     """
-    Базовый класс парсера банковской выписки. Все конкретные парсеры должны наследоваться от него.
-    
-    Методы:
-        - parse(content): метод для разбора данных, должен быть реализован в подклассах.
-        - process_transaction(transaction): обработка отдельной транзакции, определяется в подклассах.
+    Базовый класс парсера банковской выписки с универсальным методом парсинга и обработки транзакций.
     """
-    def parse(self, content):
+    def parse_and_process(self, content):
         """
-        Разбор входного контента банковской выписки.
-        :param content: Данные файла в формате строки (например, XML или другой текстовый формат).
-        :return: Список транзакций (формат определяется подклассом).
-        """
-        raise NotImplementedError("Подклассы должны реализовать этот метод")
-
-    def process_transaction(self, transaction):
-        """
-        Обработка отдельной транзакции из выписки.
-        :param transaction: Словарь с данными транзакции, полученный из метода parse().
-        :return: Обработанная транзакция в универсальном формате.
+        Универсальный метод для парсинга и обработки транзакций за один проход.
+        
+        :param content: Данные файла в формате строки (например, XML)
+        :return: Кортеж (словарь транзакций с хэшами, список хэшей)
         """
         raise NotImplementedError("Подклассы должны реализовать этот метод")
+    
+    def _generate_transaction_hash(self, transaction):
+        """
+        Генерация хэша для транзакции.
+        
+        :param transaction: Словарь с данными транзакции
+        :return: Хэш транзакции
+        """
+        hash_string = f"{transaction['date']}|{transaction['amount']}|{transaction['reference']}"
+        return hashlib.sha256(hash_string.encode()).hexdigest()
 
 
 class BankStatementParser_BELBBY2X(BaseStatementParser):
-    """
-    Парсер для обработки банковских выписок ОАО "Банк БелВЭБ".
-    
-    Формат XML-файла (пример):
-    <extractList>
-        <turns>
-            <docDate>2023-11-25T10:00:00+0300</docDate>
-            <crAmount>100.00</crAmount>
-            <dbAmount>0.00</dbAmount>
-            <naznText>Оплата услуг</naznText>
-            <corrName>ООО "Ромашка"</corrName>
-            <corrAccount>30120123456789000123</corrAccount>
-            <corrBankCode>BELBBY2X</corrBankCode>
-            <corrBankName>Банк БелВЭБ</corrBankName>
-            <turnType>DEBET</turnType>
-        </turns>
-    </extractList>
-    """
-    def parse(self, content):
+    def parse_and_process(self, content):
         xml_etree = etree.fromstring(content)
-        transactions = []
+        transactions_dict = {}
+        transaction_hashes = []
+        
         extract_list_elems = xml_etree.find("{*}extractList")
         if extract_list_elems is not None:
             for turn in extract_list_elems.findall("{*}turns"):
+                # Парсинг и преобразование транзакции
                 transaction = {
-                    'crAmount': turn.findtext("{*}crAmount") or '0',
-                    'dbAmount': turn.findtext("{*}dbAmount") or '0',
-                    'naznText': turn.findtext("{*}naznText") or '',
-                    'docDate': turn.findtext("{*}docDate") or '',
-                    'corrName': turn.findtext("{*}corrName") or '',
-                    'corrAccount': turn.findtext("{*}corrAccount") or '',
-                    'corrBankCode': turn.findtext("{*}corrBankCode") or '',
-                    'corrBankName': turn.findtext("{*}corrBankName") or '',
-                    'turnType': turn.findtext(".//addParams/entry[key='TurnType']/value") or ''
+                    'date': datetime.strptime(turn.findtext("{*}docDate"), "%Y-%m-%dT%H:%M:%S%z").date() if turn.findtext("{*}docDate") else None,
+                    'amount': float(turn.findtext("{*}dbAmount") if turn.findtext("{*}turnType") == "DEBET" else turn.findtext("{*}crAmount") or '0'),
+                    'payment_type': 'outbound' if turn.findtext("{*}turnType") == "DEBET" else 'inbound',
+                    'partner_name': turn.findtext("{*}corrName") or '',
+                    'partner_account': turn.findtext("{*}corrAccount") or '',
+                    'partner_bank_code': turn.findtext("{*}corrBankCode") or '',
+                    'partner_bank_name': turn.findtext("{*}corrBankName") or '',
+                    'reference': turn.findtext("{*}naznText") or '',
                 }
-                transactions.append(transaction)
-        return transactions
-
-    def process_transaction(self, transaction):
-        """
-        Преобразует транзакцию из формата банка БелВЭБ в универсальный формат.
-        """
-        return {
-            'date': datetime.strptime(transaction['docDate'], "%Y-%m-%dT%H:%M:%S%z").date() if transaction['docDate'] else None,
-            'amount': float(transaction['dbAmount'] if transaction['turnType'] == "DEBET" else transaction['crAmount']),
-            'payment_type': 'outbound' if transaction['turnType'] == "DEBET" else 'inbound',
-            'partner_name': transaction['corrName'],
-            'partner_account': transaction['corrAccount'],
-            'partner_bank_code': transaction['corrBankCode'],
-            'partner_bank_name': transaction['corrBankName'],
-            'reference': transaction['naznText'],
-        }
+                
+                # Генерация хэша
+                transaction_hash = self._generate_transaction_hash(transaction)
+                transaction['transaction_hash'] = transaction_hash
+                
+                transactions_dict[transaction_hash] = transaction
+                transaction_hashes.append(transaction_hash)
+        
+        return transactions_dict, transaction_hashes
 
 
 class BankStatementParser_AKBBBY2X(BaseStatementParser):
-    """
-    Парсер для обработки банковских выписок АСБ Беларусбанк.
-    
-    Формат XML-файла (пример):
-    <ACCOUNTINFO>
-        <ACCOUNT>30120123456789000123</ACCOUNT>
-        <CURRENCY Iso="BYN"/>
-        <TIMETURN date="25.11.2023"/>
-        <OPER>
-            <OPERUID>12345</OPERUID>
-            <DOCN>INV-2023-001</DOCN>
-            <MFOKORR>AKBBBY2X</MFOKORR>
-            <ACCKORR>30120123456789000456</ACCKORR>
-            <NAMEKORR>ООО "Снежинка"</NAMEKORR>
-            <SUMOPER nd="0.00" nk="200.00"/>
-            <DETPAY>Оплата товара</DETPAY>
-            <VO>123</VO>
-        </OPER>
-    </ACCOUNTINFO>
-    """
-    def parse(self, content):
+    def parse_and_process(self, content):
         xml_etree = etree.fromstring(content)
-        transactions = []
+        transactions_dict = {}
+        transaction_hashes = []
+        
         for account_info in xml_etree.findall('.//ACCOUNTINFO'):
-            account = account_info.findtext('ACCOUNT')
             currency = account_info.find('CURRENCY').get('Iso')
             date = account_info.find('TIMETURN').get('date')
 
             for oper in account_info.findall('.//OPER'):
+                # Определение типа платежа и суммы
+                payment_type = 'outbound' if float(oper.find('SUMOPER').get('nd') or 0) > 0 else 'inbound'
+                amount = float(oper.find('SUMOPER').get('nd') if payment_type == 'outbound' else oper.find('SUMOPER').get('nk') or '0')
+                
+                # Парсинг и преобразование транзакции
                 transaction = {
-                    'account': account,
+                    'date': datetime.strptime(date, "%d.%m.%Y").date() if date else None,
+                    'payment_type': payment_type,
+                    'amount': amount,
+                    'partner_name': oper.findtext('NAMEKORR') or '',
+                    'partner_account': oper.findtext('ACCKORR') or '',
+                    'partner_bank_code': oper.findtext('MFOKORR') or '',
+                    'partner_bank_name': '',
+                    'reference': oper.findtext('DETPAY') or '',
                     'currency': currency,
-                    'operuid': oper.findtext('OPERUID'),
-                    'docN': oper.findtext('DOCN'),
-                    'mfokorr': oper.findtext('MFOKORR'),
-                    'acckorr': oper.findtext('ACCKORR'),
-                    'namekorr': oper.findtext('NAMEKORR'),
-                    'dbAmount': oper.find('SUMOPER').get('nd') or '0',
-                    'crAmount': oper.find('SUMOPER').get('nk') or '0',
-                    'detpay': oper.findtext('DETPAY'),
-                    'docDate': date,
-                    #сделать словарями по ключу Хэш транзакции, не списком
-                    #объеденить в одну функцию
-                    #отдельно список хэшей
-                    
                 }
-                transactions.append(transaction)
-        return transactions
-
-
-
-
-    def process_transaction(self, transaction):
-        """
-        Преобразует транзакцию из формата Беларусбанк в универсальный формат.
-        """
-   
-        payment_type = 'outbound' if float(transaction['dbAmount']) > 0 else 'inbound'
-        if payment_type == "outbound":
-            amount = float(transaction['dbAmount'])
-        if payment_type == "inbound":
-            amount = float(transaction['crAmount'])
+                
+                # Генерация хэша
+                transaction_hash = self._generate_transaction_hash(transaction)
+                transaction['transaction_hash'] = transaction_hash
+                
+                transactions_dict[transaction_hash] = transaction
+                transaction_hashes.append(transaction_hash)
         
-        record_data =  {
-            'date': datetime.strptime(transaction['docDate'], "%d.%m.%Y").date() if transaction['docDate'] else None,
-            'payment_type': payment_type,
-            'amount': amount,
-            'partner_name': transaction['namekorr'],
-            'partner_account': transaction['acckorr'],
-            'partner_bank_code': transaction['mfokorr'],
-            'partner_bank_name': '',
-            'reference': transaction['detpay'],
-            'currency': transaction['currency'],
-            
-        }
-#        print("recored_data", record_data)
-        return record_data
+        return transactions_dict, transaction_hashes
