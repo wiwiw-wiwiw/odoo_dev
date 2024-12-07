@@ -129,6 +129,9 @@ class BankStatementParser_AKBBBY2X(BaseStatementParser):
                     'crAmount': oper.find('SUMOPER').get('nk') or '0',
                     'detpay': oper.findtext('DETPAY'),
                     'docDate': date,
+                    #сделать словарями по ключу Хэш транзакции, не списком
+                    #объеденить в одну функцию
+                    #отдельно список хэшей
                     
                 }
                 transactions.append(transaction)

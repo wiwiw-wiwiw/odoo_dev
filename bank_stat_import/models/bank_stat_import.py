@@ -97,6 +97,9 @@ class BankStatImport(models.TransientModel):
         
         # Группировка транзакций
         grouped_transactions = self._group_transactions(processed_transactions)
+
+
+        #
         
         # Создание пакетной загрузки
         batch_imports = self._create_batch_import(grouped_transactions)

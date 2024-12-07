@@ -1,6 +1,5 @@
 # bank_statement_import/models/bank_statement_import_wizard.py
 
-
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
 import base64
@@ -62,11 +61,12 @@ class BankStatementImportWizard(models.TransientModel):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Успешно',
-                    'message': 'Файл успешно импортирован.',
+                    'title': 'Завершено',
+                    'message': 'Файл обработан.',
                     'type': 'success',
                 },
             }
+        
         except Exception as e:
             return {
                 'type': 'ir.actions.client',
