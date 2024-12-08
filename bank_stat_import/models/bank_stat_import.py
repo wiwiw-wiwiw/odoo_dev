@@ -42,15 +42,25 @@ class BankStatImport(models.TransientModel):
                 _logger.error("Ошибка декодирования файла %s: %s", attachment.name, str(e))
                 raise ValueError("Ошибка декодирования файла.")
 
-            # Парсинг транзакций с хэшами
-            transactions_dict, transaction_hashes = parser.parse_and_process(content_data)
+            # Парсинг транзакций с хэшами и дополнительными данными
+            transactions_dict, transaction_hashes, partners_data, banks_data, accounts_data = parser.parse_and_process(content_data)
         
-            # Фильтрация дубликатов
+            # Фильтрация дубликатов транзакций
             filtered_transactions = self._filter_transactions(transactions_dict, transaction_hashes)
         
             if not filtered_transactions:
                 _logger.warning("Файл %s не содержит новых транзакций", attachment.name)
                 return self._notify("Файл не содержит новых транзакций.", 'warning')
+
+            # Фильтрация и создание партнеров, банков, счетов
+            filtered_partners = self._filter_partners(partners_data)
+            filtered_banks = self._filter_banks(banks_data)
+            filtered_accounts = self._filter_accounts(accounts_data, filtered_partners)
+            
+            # Создание отсутствующих записей
+            created_partners = self._create_missing_partners(filtered_partners)
+            created_banks = self._create_missing_banks(filtered_banks)
+            created_accounts = self._create_missing_accounts(filtered_accounts, created_partners, created_banks)
 
             # Создание платежей
             self._create_payments_from_transactions(filtered_transactions)
@@ -78,23 +88,111 @@ class BankStatImport(models.TransientModel):
         :param transaction_hashes: Список хэшей транзакций
         :return: Список словарей новых транзакций, готовых к загрузке
         """
-        # Получаем существующие хэши из account.payments
         existing_hashes = self.env['account.payment'].search([
             ('transaction_hash', 'in', transaction_hashes)
         ]).mapped('transaction_hash')
-
-        #print(existing_hashes)
     
-        # Фильтруем транзакции: оставляем только новые
         filtered_transactions = [
             transaction 
             for hash_key, transaction in transactions_dict.items() 
             if hash_key not in existing_hashes
         ]
 
-        #print(filtered_transactions)
-
         return filtered_transactions
+
+    def _filter_partners(self, partners_data):
+        """
+        Фильтрация партнеров, которые еще не существуют в базе.
+        """
+        existing_partners = self.env['res.partner'].search([
+            ('name', 'in', list(partners_data.keys()))
+        ])
+        existing_partner_names = existing_partners.mapped('name')
+        
+        return {
+            name: data 
+            for name, data in partners_data.items() 
+            if name not in existing_partner_names
+        }
+
+    def _filter_banks(self, banks_data):
+        """
+        Фильтрация банков, которые еще не существуют в базе.
+        """
+        existing_banks = self.env['res.bank'].search([
+            ('bic', 'in', [data['bic'] for data in banks_data.values()])
+        ])
+        existing_bank_codes = existing_banks.mapped('bic')
+        
+        return {
+            bic: data 
+            for bic, data in banks_data.items() 
+            if bic not in existing_bank_codes
+        }
+
+    def _filter_accounts(self, accounts_data, filtered_partners):
+        """
+        Фильтрация банковских счетов, которые еще не существуют в базе.
+        """
+        existing_accounts = self.env['res.partner.bank'].search([
+            ('acc_number', 'in', [data['acc_number'] for data in accounts_data.values()])
+        ])
+        existing_account_numbers = existing_accounts.mapped('acc_number')
+        
+        return {
+            acc_num: data 
+            for acc_num, data in accounts_data.items() 
+            if acc_num not in existing_account_numbers and data['partner_name'] not in filtered_partners
+        }
+
+    def _create_missing_partners(self, partners):
+        """
+        Создание новых партнеров.
+        """
+        if not partners:
+            return {}
+        
+        created_partners = self.env['res.partner'].create([
+            {'name': name} for name in partners.keys()
+        ])
+        
+        return {partner.name: partner for partner in created_partners}
+
+    def _create_missing_banks(self, banks):
+        """
+        Создание новых банков.
+        """
+        if not banks:
+            return {}
+        
+        created_banks = self.env['res.bank'].create([
+            {'name': data['name'], 'bic': bic} 
+            for bic, data in banks.items()
+        ])
+        
+        return {bank.bic: bank for bank in created_banks}
+
+    def _create_missing_accounts(self, accounts, created_partners, created_banks):
+            """
+            Создание новых банковских счетов.
+            """
+            if not accounts:
+                return {}
+            
+            accounts_to_create = []
+            for acc_num, data in accounts.items():
+                partner = created_partners.get(data['partner_name'])
+                if partner:
+                    accounts_to_create.append({
+                        'acc_number': acc_num,
+                        'partner_id': partner.id,
+                    })
+            
+            if accounts_to_create:
+                created_accounts = self.env['res.partner.bank'].create(accounts_to_create)
+                return {account.acc_number: account for account in created_accounts}
+            
+            return {}
 
     def _create_payments_from_transactions(self, transactions):
         """
@@ -102,62 +200,29 @@ class BankStatImport(models.TransientModel):
         
         :param transactions: Список транзакций для создания
         """
+        if not transactions:
+            return
+        
         payment_data = []
-
         for transaction in transactions:
-            partner_id = self._get_or_create_partner(transaction['partner_name'])
-            partner_bank_id = self._get_or_create_partner_bank(
-                transaction.get('partner_account', ''),
-                transaction.get('partner_bank_code', ''),
-                transaction.get('partner_bank_name', ''),
-                partner_id
-            )
+            partner = self.env['res.partner'].search([('name', '=', transaction['partner_name'])], limit=1)
+            partner_bank = self.env['res.partner.bank'].search([
+                ('acc_number', '=', transaction.get('partner_account', '')), 
+                ('partner_id', '=', partner.id)
+            ], limit=1)
 
             payment_data.append({
                 'amount': transaction['amount'],
                 'payment_type': transaction['payment_type'],
                 'ref': transaction['reference'],
                 'date': transaction['date'],
-                'partner_id': partner_id,
-                'partner_bank_id': partner_bank_id,
+                'partner_id': partner.id,
+                'partner_bank_id': partner_bank.id,
                 'transaction_hash': transaction['transaction_hash'],
             })
-        #print(payment_data)
+        
         if payment_data:
             self.env['account.payment'].create(payment_data)
-
-    @api.model
-    def _get_or_create_partner(self, partner_name):
-        """
-        Поиск или создание партнера по имени.
-        """
-        partner = self.env['res.partner'].search([('name', '=', partner_name)], limit=1)
-        if not partner:
-            partner = self.env['res.partner'].create({'name': partner_name})
-        return partner.id
-
-    @api.model
-    def _get_or_create_partner_bank(self, account_number, bank_code, bank_name, partner_id):
-        """
-        Поиск или создание банковского счета партнёра.
-        """
-        partner_bank = self.env['res.partner.bank'].search([('acc_number', '=', account_number)], limit=1)
-        if partner_bank:
-            return partner_bank.id
-
-        bank = self.env['res.bank'].search([('bic', '=', bank_code)], limit=1)
-        if not bank:
-            bank = self.env['res.bank'].create({
-                'name': bank_name or bank_code, 
-                'bic': bank_code
-            })
-
-        partner_bank = self.env['res.partner.bank'].create({
-            'acc_number': account_number,
-            'bank_id': bank.id,
-            'partner_id': partner_id,
-        })
-        return partner_bank.id
 
     def _notify(self, message, message_type):
         """
@@ -173,3 +238,9 @@ class BankStatImport(models.TransientModel):
                 'sticky': False,
             },
         }
+
+
+
+
+
+   

@@ -16,7 +16,7 @@ class BaseStatementParser:
         Универсальный метод для парсинга и обработки транзакций за один проход.
         
         :param content: Данные файла в формате строки (например, XML)
-        :return: Кортеж (словарь транзакций с хэшами, список хэшей)
+        :return: Кортеж (словарь транзакций с хэшами, список хэшей, партнеры, банки, счета)
         """
         raise NotImplementedError("Подклассы должны реализовать этот метод")
     
@@ -36,6 +36,11 @@ class BankStatementParser_BELBBY2X(BaseStatementParser):
         xml_etree = etree.fromstring(content)
         transactions_dict = {}
         transaction_hashes = []
+        
+        # Словари для сбора уникальных партнеров, банков и счетов
+        partners_data = {}
+        banks_data = {}
+        accounts_data = {}
         
         extract_list_elems = xml_etree.find("{*}extractList")
         if extract_list_elems is not None:
@@ -70,9 +75,26 @@ class BankStatementParser_BELBBY2X(BaseStatementParser):
                 
                 transactions_dict[transaction_hash] = transaction
                 transaction_hashes.append(transaction_hash)
+                
+                # Сбор уникальных данных о партнерах, банках и счетах
+                if transaction['partner_name']:
+                    partners_data[transaction['partner_name']] = {
+                        'name': transaction['partner_name']
+                    }
+                
+                if transaction['partner_bank_code']:
+                    banks_data[transaction['partner_bank_code']] = {
+                        'bic': transaction['partner_bank_code'],
+                        'name': transaction['partner_bank_name'] or transaction['partner_bank_code']
+                    }
+                
+                if transaction['partner_account']:
+                    accounts_data[transaction['partner_account']] = {
+                        'acc_number': transaction['partner_account'],
+                        'partner_name': transaction['partner_name']
+                    }
         
-        return transactions_dict, transaction_hashes
-
+        return transactions_dict, transaction_hashes, partners_data, banks_data, accounts_data
 
 
 class BankStatementParser_AKBBBY2X(BaseStatementParser):
@@ -80,6 +102,11 @@ class BankStatementParser_AKBBBY2X(BaseStatementParser):
         xml_etree = etree.fromstring(content)
         transactions_dict = {}
         transaction_hashes = []
+        
+        # Словари для сбора уникальных партнеров, банков и счетов
+        partners_data = {}
+        banks_data = {}
+        accounts_data = {}
         
         for account_info in xml_etree.findall('.//ACCOUNTINFO'):
             currency = account_info.find('CURRENCY').get('Iso')
@@ -109,6 +136,23 @@ class BankStatementParser_AKBBBY2X(BaseStatementParser):
                 
                 transactions_dict[transaction_hash] = transaction
                 transaction_hashes.append(transaction_hash)
-                #print(transactions_dict)
-                #print(transaction_hash)
-        return transactions_dict, transaction_hashes
+                
+                # Сбор уникальных данных о партнерах, банках и счетах
+                if transaction['partner_name']:
+                    partners_data[transaction['partner_name']] = {
+                        'name': transaction['partner_name']
+                    }
+                
+                if transaction['partner_bank_code']:
+                    banks_data[transaction['partner_bank_code']] = {
+                        'bic': transaction['partner_bank_code'],
+                        'name': transaction.get('partner_bank_name') or transaction['partner_bank_code']
+                    }
+                
+                if transaction['partner_account']:
+                    accounts_data[transaction['partner_account']] = {
+                        'acc_number': transaction['partner_account'],
+                        'partner_name': transaction['partner_name']
+                    }
+        
+        return transactions_dict, transaction_hashes, partners_data, banks_data, accounts_data
