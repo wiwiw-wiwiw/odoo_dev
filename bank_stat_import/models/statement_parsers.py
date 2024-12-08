@@ -40,11 +40,24 @@ class BankStatementParser_BELBBY2X(BaseStatementParser):
         extract_list_elems = xml_etree.find("{*}extractList")
         if extract_list_elems is not None:
             for turn in extract_list_elems.findall("{*}turns"):
-                # Парсинг и преобразование транзакции
+                # определение типа транзакции
+                db_amount = turn.findtext("{*}dbAmount") or '0'
+                cr_amount = turn.findtext("{*}crAmount") or '0'
+                # определение типа транзакции по наличию суммы
+                if float(db_amount) > 0:
+                    payment_type = 'outbound'
+                    amount = db_amount
+                elif float(cr_amount) > 0:
+                    payment_type = 'inbound'
+                    amount = cr_amount
+                else:
+                    # пропускаем транзакции с нулевой суммой
+                    continue
+                
                 transaction = {
                     'date': datetime.strptime(turn.findtext("{*}docDate"), "%Y-%m-%dT%H:%M:%S%z").date() if turn.findtext("{*}docDate") else None,
-                    'amount': float(turn.findtext("{*}dbAmount") if turn.findtext("{*}turnType") == "DEBET" else turn.findtext("{*}crAmount") or '0'),
-                    'payment_type': 'outbound' if turn.findtext("{*}turnType") == "DEBET" else 'inbound',
+                    'amount': amount,
+                    'payment_type': payment_type,
                     'partner_name': turn.findtext("{*}corrName") or '',
                     'partner_account': turn.findtext("{*}corrAccount") or '',
                     'partner_bank_code': turn.findtext("{*}corrBankCode") or '',
@@ -52,7 +65,6 @@ class BankStatementParser_BELBBY2X(BaseStatementParser):
                     'reference': turn.findtext("{*}naznText") or '',
                 }
                 
-                # Генерация хэша
                 transaction_hash = self._generate_transaction_hash(transaction)
                 transaction['transaction_hash'] = transaction_hash
                 
@@ -60,6 +72,7 @@ class BankStatementParser_BELBBY2X(BaseStatementParser):
                 transaction_hashes.append(transaction_hash)
         
         return transactions_dict, transaction_hashes
+
 
 
 class BankStatementParser_AKBBBY2X(BaseStatementParser):
