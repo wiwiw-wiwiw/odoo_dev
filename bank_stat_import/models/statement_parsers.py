@@ -109,5 +109,6 @@ class BankStatementParser_AKBBBY2X(BaseStatementParser):
                 
                 transactions_dict[transaction_hash] = transaction
                 transaction_hashes.append(transaction_hash)
-        
+                #print(transactions_dict)
+                #print(transaction_hash)
         return transactions_dict, transaction_hashes

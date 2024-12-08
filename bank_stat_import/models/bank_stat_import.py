@@ -82,6 +82,8 @@ class BankStatImport(models.TransientModel):
         existing_hashes = self.env['account.payment'].search([
             ('transaction_hash', 'in', transaction_hashes)
         ]).mapped('transaction_hash')
+
+        #print(existing_hashes)
     
         # Фильтруем транзакции: оставляем только новые
         filtered_transactions = [
@@ -89,7 +91,9 @@ class BankStatImport(models.TransientModel):
             for hash_key, transaction in transactions_dict.items() 
             if hash_key not in existing_hashes
         ]
-    
+
+        #print(filtered_transactions)
+
         return filtered_transactions
 
     def _create_payments_from_transactions(self, transactions):
@@ -118,7 +122,7 @@ class BankStatImport(models.TransientModel):
                 'partner_bank_id': partner_bank_id,
                 'transaction_hash': transaction['transaction_hash'],
             })
-
+        #print(payment_data)
         if payment_data:
             self.env['account.payment'].create(payment_data)
 
