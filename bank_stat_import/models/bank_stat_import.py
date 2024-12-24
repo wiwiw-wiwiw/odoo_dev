@@ -1,4 +1,3 @@
-# bank_statement_import/models/bank_stat_import.py
 # -*- coding: utf-8 -*-
 from odoo import models, api, fields
 from .statement_parsers import BankStatementParser_BELBBY2X, BankStatementParser_AKBBBY2X
@@ -10,66 +9,94 @@ _logger = logging.getLogger(__name__)
 class BankStatImport(models.TransientModel):
     """
     TransientModel для обработки импорта банковских выписок.
-    Отвечает за чтение вложенных файлов, выбор парсера,
-    обработку транзакций и создание платежных записей.
+    
+    Основные функции:
+    - Чтение и обработка файлов банковских выписок
+    - Пакетная обработка данных для минимизации запросов к БД
+    - Создание и обновление связанных записей (партнеры, банки, счета)
+    - Создание платежных записей на основе выписок
     """
     _name = 'bank.statement.import'
     _description = 'Bank Statement Import'
 
     def create_document_from_attachment(self, attachment_ids, parser_type):
         """
-        Обрабатывает файл банковской выписки и создает записи платежей.
+        Основной метод обработки файлов банковских выписок.
         
-        :param attachment_ids: Список ID вложений (ir.attachment)
-        :param parser_type: Тип парсера ('BELBBY2X', 'AKBBBY2X')
-        :return: Действие открытия созданных платежей или уведомление
+        Args:
+            attachment_ids (list): Список ID вложений (ir.attachment)
+            parser_type (str): Тип парсера ('BELBBY2X', 'AKBBBY2X')
+        
+        Returns:
+            dict: Действие Odoo (уведомление о результате)
+        
+        Raises:
+            ValueError: Если вложения не найдены или возникла ошибка при обработке
         """
         attachments = self.env['ir.attachment'].browse(attachment_ids)
-
-        # Проверка на наличие вложений
         if not attachments:
             raise ValueError("Вложения не найдены или отсутствуют.")
 
+        # Словари для накопления данных из всех файлов
+        all_transactions = []
+        all_transaction_hashes = set()
+        all_partners_data = {}
+        all_banks_data = {}
+        all_accounts_data = {}
+        
+        # Обработка каждого вложения
         for attachment in attachments:
-            # Логика выбора парсера
-            parser = self._get_parser(parser_type)
-
-            # Декодирование содержимого файла
             try:
+                # Получение и декодирование содержимого файла
                 content_data = base64.b64decode(attachment.datas)
-                _logger.info("Файл %s успешно декодирован", attachment.name)
+                parser = self._get_parser(parser_type)
+                
+                # Парсинг данных из файла
+                transactions_dict, transaction_hashes, partners_data, banks_data, accounts_data = (
+                    parser.parse_and_process(content_data)
+                )
+                
+                # Фильтрация дубликатов транзакций
+                filtered_transactions = self._filter_transactions(transactions_dict, transaction_hashes)
+                
+                if filtered_transactions:
+                    all_transactions.extend(filtered_transactions)
+                    all_transaction_hashes.update(transaction_hashes)
+                    all_partners_data.update(partners_data)
+                    all_banks_data.update(banks_data)
+                    all_accounts_data.update(accounts_data)
+                
+                _logger.info(f"Файл {attachment.name} успешно обработан")
+                
             except Exception as e:
-                _logger.error("Ошибка декодирования файла %s: %s", attachment.name, str(e))
-                raise ValueError("Ошибка декодирования файла.")
+                _logger.error(f"Ошибка обработки файла {attachment.name}: {str(e)}")
+                raise ValueError(f"Ошибка обработки файла {attachment.name}: {str(e)}")
 
-            # Парсинг транзакций с хэшами и дополнительными данными
-            transactions_dict, transaction_hashes, partners_data, banks_data, accounts_data = parser.parse_and_process(content_data)
+        if not all_transactions:
+            return self._notify("Файлы не содержат новых транзакций.", 'warning')
+
+        # Пакетная обработка всех связанных данных
+        partner_mapping = self._process_partners_batch(all_partners_data)
+        bank_mapping = self._process_banks_batch(all_banks_data)
+        account_mapping = self._process_accounts_batch(all_accounts_data, partner_mapping, bank_mapping)
         
-            # Фильтрация дубликатов транзакций
-            filtered_transactions = self._filter_transactions(transactions_dict, transaction_hashes)
+        # Создание платежей
+        self._create_payments_from_transactions(all_transactions, partner_mapping, account_mapping)
         
-            if not filtered_transactions:
-                _logger.warning("Файл %s не содержит новых транзакций", attachment.name)
-                return self._notify("Файл не содержит новых транзакций.", 'warning')
-
-            # Фильтрация и создание партнеров, банков, счетов
-            filtered_partners = self._filter_partners(partners_data)
-            filtered_banks = self._filter_banks(banks_data)
-            filtered_accounts = self._filter_accounts(accounts_data, filtered_partners)
-            
-            # Создание отсутствующих записей
-            created_partners = self._create_missing_partners(filtered_partners)
-            created_banks = self._create_missing_banks(filtered_banks)
-            created_accounts = self._create_missing_accounts(filtered_accounts, created_partners, created_banks)
-
-            # Создание платежей
-            self._create_payments_from_transactions(filtered_transactions)
-
         return self._notify("Импорт завершён успешно.", 'success')
 
     def _get_parser(self, parser_type):
         """
-        Возвращает парсер на основе переданного типа.
+        Возвращает соответствующий парсер на основе типа.
+        
+        Args:
+            parser_type (str): Тип парсера
+        
+        Returns:
+            object: Экземпляр класса парсера
+            
+        Raises:
+            ValueError: Если тип парсера не поддерживается
         """
         parsers = {
             'BELBBY2X': BankStatementParser_BELBBY2X,
@@ -82,151 +109,159 @@ class BankStatImport(models.TransientModel):
 
     def _filter_transactions(self, transactions_dict, transaction_hashes):
         """
-        Фильтрация транзакций, исключая уже существующие в account.payments.
+        Фильтрует транзакции, исключая существующие в системе.
         
-        :param transactions_dict: Словарь транзакций с хэшами в качестве ключей
-        :param transaction_hashes: Список хэшей транзакций
-        :return: Список словарей новых транзакций, готовых к загрузке
+        Args:
+            transactions_dict (dict): Словарь транзакций
+            transaction_hashes (set): Множество хэшей транзакций
+        
+        Returns:
+            list: Список новых транзакций
         """
-        existing_hashes = self.env['account.payment'].search([
-            ('transaction_hash', 'in', transaction_hashes)
-        ]).mapped('transaction_hash')
-    
-        filtered_transactions = [
+        existing_hashes = set(self.env['account.payment'].search([
+            ('transaction_hash', 'in', list(transaction_hashes))
+        ]).mapped('transaction_hash'))
+        
+        return [
             transaction 
             for hash_key, transaction in transactions_dict.items() 
             if hash_key not in existing_hashes
         ]
 
-        return filtered_transactions
-
-    def _filter_partners(self, partners_data):
+    def _process_partners_batch(self, partners_data):
         """
-        Фильтрация партнеров, которые еще не существуют в базе.
+        Пакетная обработка данных партнеров.
+        
+        Args:
+            partners_data (dict): Словарь с данными партнеров
+        
+        Returns:
+            dict: Маппинг имен партнеров на их записи
         """
+        # Получаем существующих партнеров одним запросом
         existing_partners = self.env['res.partner'].search([
             ('name', 'in', list(partners_data.keys()))
         ])
-        existing_partner_names = existing_partners.mapped('name')
+        partner_mapping = {partner.name: partner for partner in existing_partners}
         
-        return {
-            name: data 
-            for name, data in partners_data.items() 
-            if name not in existing_partner_names
-        }
+        # Создаем отсутствующих партнеров
+        partners_to_create = [
+            {'name': name}
+            for name in partners_data
+            if name not in partner_mapping
+        ]
+        
+        if partners_to_create:
+            new_partners = self.env['res.partner'].create(partners_to_create)
+            partner_mapping.update({partner.name: partner for partner in new_partners})
+        
+        return partner_mapping
 
-    def _filter_banks(self, banks_data):
+    def _process_banks_batch(self, banks_data):
         """
-        Фильтрация банков, которые еще не существуют в базе.
+        Пакетная обработка данных банков.
+        
+        Args:
+            banks_data (dict): Словарь с данными банков
+        
+        Returns:
+            dict: Маппинг BIC банков на их записи
         """
         existing_banks = self.env['res.bank'].search([
-            ('bic', 'in', [data['bic'] for data in banks_data.values()])
+            ('bic', 'in', list(banks_data.keys()))
         ])
-        existing_bank_codes = existing_banks.mapped('bic')
+        bank_mapping = {bank.bic: bank for bank in existing_banks}
         
-        return {
-            bic: data 
-            for bic, data in banks_data.items() 
-            if bic not in existing_bank_codes
-        }
+        banks_to_create = [
+            {'name': data['name'], 'bic': bic}
+            for bic, data in banks_data.items()
+            if bic not in bank_mapping
+        ]
+        
+        if banks_to_create:
+            new_banks = self.env['res.bank'].create(banks_to_create)
+            bank_mapping.update({bank.bic: bank for bank in new_banks})
+        
+        return bank_mapping
 
-    def _filter_accounts(self, accounts_data, filtered_partners):
+    def _process_accounts_batch(self, accounts_data, partner_mapping, bank_mapping):
         """
-        Фильтрация банковских счетов, которые еще не существуют в базе.
+        Пакетная обработка банковских счетов.
+        
+        Args:
+            accounts_data (dict): Словарь с данными счетов
+            partner_mapping (dict): Маппинг партнеров
+            bank_mapping (dict): Маппинг банков
+        
+        Returns:
+            dict: Маппинг номеров счетов на их записи
         """
         existing_accounts = self.env['res.partner.bank'].search([
-            ('acc_number', 'in', [data['acc_number'] for data in accounts_data.values()])
+            ('acc_number', 'in', list(accounts_data.keys()))
         ])
-        existing_account_numbers = existing_accounts.mapped('acc_number')
+        account_mapping = {account.acc_number: account for account in existing_accounts}
         
-        return {
-            acc_num: data 
-            for acc_num, data in accounts_data.items() 
-            if acc_num not in existing_account_numbers and data['partner_name'] not in filtered_partners
-        }
-
-    def _create_missing_partners(self, partners):
-        """
-        Создание новых партнеров.
-        """
-        if not partners:
-            return {}
-        
-        created_partners = self.env['res.partner'].create([
-            {'name': name} for name in partners.keys()
-        ])
-        
-        return {partner.name: partner for partner in created_partners}
-
-    def _create_missing_banks(self, banks):
-        """
-        Создание новых банков.
-        """
-        if not banks:
-            return {}
-        
-        created_banks = self.env['res.bank'].create([
-            {'name': data['name'], 'bic': bic} 
-            for bic, data in banks.items()
-        ])
-        
-        return {bank.bic: bank for bank in created_banks}
-
-    def _create_missing_accounts(self, accounts, created_partners, created_banks):
-            """
-            Создание новых банковских счетов.
-            """
-            if not accounts:
-                return {}
-            
-            accounts_to_create = []
-            for acc_num, data in accounts.items():
-                partner = created_partners.get(data['partner_name'])
-                if partner:
-                    accounts_to_create.append({
-                        'acc_number': acc_num,
-                        'partner_id': partner.id,
-                    })
-            
-            if accounts_to_create:
-                created_accounts = self.env['res.partner.bank'].create(accounts_to_create)
-                return {account.acc_number: account for account in created_accounts}
-            
-            return {}
-
-    def _create_payments_from_transactions(self, transactions):
-        """
-        Создание платежей из отфильтрованных транзакций.
-        
-        :param transactions: Список транзакций для создания
-        """
-        if not transactions:
-            return
-        
-        payment_data = []
-        for transaction in transactions:
-            partner = self.env['res.partner'].search([('name', '=', transaction['partner_name'])], limit=1)
-            partner_bank = self.env['res.partner.bank'].search([
-                ('acc_number', '=', transaction.get('partner_account', '')), 
-                ('partner_id', '=', partner.id)
-            ], limit=1)
-
-            payment_data.append({
-                'amount': transaction['amount'],
-                'payment_type': transaction['payment_type'],
-                'ref': transaction['reference'],
-                'date': transaction['date'],
+        accounts_to_create = []
+        for acc_num, data in accounts_data.items():
+            if acc_num in account_mapping:
+                continue
+                
+            partner = partner_mapping.get(data['partner_name'])
+            if not partner:
+                continue
+                
+            accounts_to_create.append({
+                'acc_number': acc_num,
                 'partner_id': partner.id,
-                'partner_bank_id': partner_bank.id,
-                'transaction_hash': transaction['transaction_hash'],
+                'bank_id': bank_mapping.get(data.get('bank_bic')).id if data.get('bank_bic') else False,
             })
+        
+        if accounts_to_create:
+            new_accounts = self.env['res.partner.bank'].create(accounts_to_create)
+            account_mapping.update({account.acc_number: account for account in new_accounts})
+        
+        return account_mapping
+
+    def _create_payments_from_transactions(self, transactions, partner_mapping, account_mapping):
+        """
+        Пакетное создание платежей из транзакций.
+        """
+        # Фильтруем транзакции с существующими партнерами и счетами
+        valid_transactions = [
+            t for t in transactions
+            if partner_mapping.get(t['partner_name']) and 
+            account_mapping.get(t.get('partner_account', ''))
+        ]
+        
+        # Логируем пропущенные транзакции
+        skipped = set(t['partner_name'] for t in transactions) - set(t['partner_name'] for t in valid_transactions)
+        if skipped:
+            _logger.warning(f"Пропущены транзакции для партнеров: {', '.join(skipped)}")
+        
+        # Создаем все платежи одной операцией
+        payment_data = [{
+            'amount': t['amount'],
+            'payment_type': t['payment_type'],
+            'ref': t['reference'],
+            'date': t['date'],
+            'partner_id': partner_mapping[t['partner_name']].id,
+            'partner_bank_id': account_mapping[t.get('partner_account', '')].id,
+            'transaction_hash': t['transaction_hash'],
+        } for t in valid_transactions]
         
         if payment_data:
             self.env['account.payment'].create(payment_data)
 
     def _notify(self, message, message_type):
         """
-        Генерирует уведомление для интерфейса Odoo.
+        Создает уведомление для интерфейса Odoo.
+        
+        Args:
+            message (str): Текст уведомления
+            message_type (str): Тип уведомления ('success', 'warning', 'error')
+        
+        Returns:
+            dict: Действие клиента Odoo
         """
         return {
             'type': 'ir.actions.client',
@@ -238,9 +273,3 @@ class BankStatImport(models.TransientModel):
                 'sticky': False,
             },
         }
-
-
-
-
-
-   
